@@ -39,4 +39,15 @@ export const authAPI = {
   updateProfile: (data) => API.put('/auth/profile', data),
 };
 
+export const busAPI = {
+  // Passenger-facing search — any authenticated user
+  search: (params) => API.get('/buses/search', { params }),
+  // Admin/manager bus inventory management
+  getAll: () => API.get('/buses'),
+  getOne: (id) => API.get(`/buses/${id}`),
+  create: (data) => API.post('/buses', data),
+  update: (id, data) => API.put(`/buses/${id}`, data),
+  remove: (id) => API.delete(`/buses/${id}`),
+};
+
 export default API;
