@@ -26,20 +26,11 @@ export const NavigationDrawer = ({ isOpen, onClose }) => {
   };
 
   const handleSearchBus = () => {
-    toast(
-      '🚌 Search Bus Module',
-      {
-        icon: '🔍',
-        style: {
-          borderRadius: '12px',
-          background: '#0f172a',
-          color: '#e2e8f0',
-          border: '1px solid rgba(51, 120, 255, 0.3)',
-        },
-      }
-    );
+    navigate('/search');
     if (onClose) onClose();
   };
+
+  const canManageBuses = user?.role === 'admin' || user?.role === 'manager';
 
   return (
     <>
@@ -127,6 +118,23 @@ export const NavigationDrawer = ({ isOpen, onClose }) => {
               </div>
               <span className="drawer-link-label">My Profile</span>
             </Link>
+
+            {canManageBuses && (
+              <Link
+                to="/bus-management"
+                className={`drawer-link ${location.pathname === '/bus-management' ? 'active' : ''}`}
+                onClick={onClose}
+              >
+                <div className="drawer-link-icon">
+                  <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                    <path d="M8 6v6" /><path d="M15 6v6" /><path d="M2 12h19.6" />
+                    <path d="M18 18h3s.5-1.7.8-2.8c.1-.4.2-.8.2-1.2 0-.4-.1-.8-.2-1.2l-1.4-5C20.1 6.8 19.1 6 18 6H4a2 2 0 0 0-2 2v10h3" />
+                    <circle cx="7" cy="18" r="2" /><circle cx="17" cy="18" r="2" />
+                  </svg>
+                </div>
+                <span className="drawer-link-label">Bus Management</span>
+              </Link>
+            )}
           </div>
 
           <div className="drawer-menu-section">

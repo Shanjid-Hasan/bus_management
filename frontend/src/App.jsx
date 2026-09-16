@@ -6,30 +6,44 @@ import Register from './components/Register';
 import Dashboard from './components/Dashboard';
 import Profile from './components/Profile';
 import SearchBus from './components/SearchBus';
+import BusManagement from './components/BusManagement';
 import ComponentShowcase from './components/ComponentShowcase';
+
+const LoadingScreen = () => (
+  <div className="loading-screen">
+    <div className="loading-content">
+      <div className="brand-icon">
+        <svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+          <path d="M8 6v6" /><path d="M15 6v6" /><path d="M2 12h19.6" />
+          <path d="M18 18h3s.5-1.7.8-2.8c.1-.4.2-.8.2-1.2 0-.4-.1-.8-.2-1.2l-1.4-5C20.1 6.8 19.1 6 18 6H4a2 2 0 0 0-2 2v10h3" />
+          <circle cx="7" cy="18" r="2" /><circle cx="17" cy="18" r="2" />
+        </svg>
+      </div>
+      <p>Loading...</p>
+    </div>
+  </div>
+);
 
 // Protected route wrapper
 const ProtectedRoute = ({ children }) => {
   const { isAuthenticated, loading } = useAuth();
 
-  if (loading) {
-    return (
-      <div className="loading-screen">
-        <div className="loading-content">
-          <div className="brand-icon">
-            <svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-              <path d="M8 6v6" /><path d="M15 6v6" /><path d="M2 12h19.6" />
-              <path d="M18 18h3s.5-1.7.8-2.8c.1-.4.2-.8.2-1.2 0-.4-.1-.8-.2-1.2l-1.4-5C20.1 6.8 19.1 6 18 6H4a2 2 0 0 0-2 2v10h3" />
-              <circle cx="7" cy="18" r="2" /><circle cx="17" cy="18" r="2" />
-            </svg>
-          </div>
-          <p>Loading...</p>
-        </div>
-      </div>
-    );
-  }
+  if (loading) return <LoadingScreen />;
 
   return isAuthenticated ? children : <Navigate to="/login" replace />;
+};
+
+// Protected route wrapper that also enforces a role allow-list (e.g. admin/manager
+// only pages). The backend re-checks this independently — the frontend gate is
+// purely for a clean UX, not the real security boundary.
+const RoleProtectedRoute = ({ children, roles }) => {
+  const { isAuthenticated, loading, user } = useAuth();
+
+  if (loading) return <LoadingScreen />;
+  if (!isAuthenticated) return <Navigate to="/login" replace />;
+  if (roles && !roles.includes(user?.role)) return <Navigate to="/dashboard" replace />;
+
+  return children;
 };
 
 // Redirect authenticated users away from auth pages
@@ -73,6 +87,14 @@ function App() {
           <Route path="/dashboard" element={<ProtectedRoute><Dashboard /></ProtectedRoute>} />
           <Route path="/profile" element={<ProtectedRoute><Profile /></ProtectedRoute>} />
           <Route path="/search" element={<ProtectedRoute><SearchBus /></ProtectedRoute>} />
+          <Route
+            path="/bus-management"
+            element={
+              <RoleProtectedRoute roles={['admin', 'manager']}>
+                <BusManagement />
+              </RoleProtectedRoute>
+            }
+          />
           <Route path="/components" element={<ProtectedRoute><ComponentShowcase /></ProtectedRoute>} />
           <Route path="*" element={<Navigate to="/login" replace />} />
         </Routes>
