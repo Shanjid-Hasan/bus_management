@@ -1,55 +1,95 @@
-import { useMemo, useState } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 import { useLocation } from 'react-router-dom';
 import toast from 'react-hot-toast';
 import MainLayout from './layout/MainLayout';
 import { Button, Card } from './common';
-
-const MOCK_BUSES = [
-  { id: 1, operator: 'Green Line Paribahan', type: 'AC', departure: '06:30 AM', arrival: '12:00 PM', duration: '5h 30m', from: 'Dhaka', to: 'Rajshahi', seats: 18, fare: 850, rating: 4.8, badge: 'Best rated' },
-  { id: 2, operator: 'Hanif Enterprise', type: 'AC', departure: '08:15 AM', arrival: '01:00 PM', duration: '4h 45m', from: 'Dhaka', to: 'Chittagong', seats: 9, fare: 950, rating: 4.6, badge: 'Popular' },
-  { id: 3, operator: 'Shohagh Paribahan', type: 'Non-AC', departure: '10:00 AM', arrival: '03:30 PM', duration: '5h 30m', from: 'Dhaka', to: 'Rajshahi', seats: 24, fare: 650, rating: 4.3, badge: 'Lowest fare' },
-  { id: 4, operator: 'Desh Travels', type: 'AC', departure: '02:30 PM', arrival: '07:45 PM', duration: '5h 15m', from: 'Dhaka', to: 'Sylhet', seats: 12, fare: 900, rating: 4.7, badge: 'Featured' },
-  { id: 5, operator: 'Ena Transport', type: 'Non-AC', departure: '09:45 PM', arrival: '03:15 AM', duration: '5h 30m', from: 'Dhaka', to: 'Rajshahi', seats: 31, fare: 600, rating: 4.2, badge: 'Night service' },
-];
+import { busAPI } from '../services/api';
 
 const today = new Date().toISOString().split('T')[0];
+
+// Stored as 24-hour "HH:mm" in the database — format for display here.
+const formatTime = (time24) => {
+  if (!time24 || !time24.includes(':')) return time24 || '';
+  const [hourStr, minuteStr] = time24.split(':');
+  const hour = Number(hourStr);
+  const period = hour >= 12 ? 'PM' : 'AM';
+  const hour12 = hour % 12 === 0 ? 12 : hour % 12;
+  return `${hour12}:${minuteStr} ${period}`;
+};
+
+const formatJourneyDate = (isoDate) => {
+  if (!isoDate) return '';
+  return new Date(isoDate).toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric' });
+};
+
+const seatBadge = (availableSeats) => {
+  if (availableSeats <= 5) return { label: 'Filling fast', tone: 'urgent' };
+  if (availableSeats <= 15) return { label: 'Limited seats', tone: 'notice' };
+  return { label: 'Available', tone: 'ok' };
+};
 
 const SearchBus = () => {
   const location = useLocation();
   const initialSearch = location.state || {};
-  const [search, setSearch] = useState({ from: initialSearch.from || 'Dhaka', to: initialSearch.to || '', date: initialSearch.date || today });
+
+  const [search, setSearch] = useState({
+    from: initialSearch.from || 'Dhaka',
+    to: initialSearch.to || '',
+    date: initialSearch.date || today,
+  });
   const [filters, setFilters] = useState({ type: 'All', maxFare: 1500, sort: 'recommended' });
   const [hasSearched, setHasSearched] = useState(Boolean(initialSearch.to));
+
+  const [buses, setBuses] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState('');
 
   const updateSearch = (event) => {
     const { name, value } = event.target;
     setSearch((previous) => ({ ...previous, [name]: value }));
   };
 
-  const results = useMemo(() => {
-    const filtered = MOCK_BUSES.filter((bus) => {
-      const matchesFrom = !search.from || bus.from.toLowerCase().includes(search.from.toLowerCase());
-      const matchesTo = !search.to || bus.to.toLowerCase().includes(search.to.toLowerCase());
-      const matchesType = filters.type === 'All' || bus.type === filters.type;
-      return matchesFrom && matchesTo && matchesType && bus.fare <= Number(filters.maxFare);
-    });
+  const runSearch = useCallback(async (searchParams, filterParams) => {
+    setLoading(true);
+    setError('');
+    try {
+      const { data } = await busAPI.search({
+        source: searchParams.from || undefined,
+        destination: searchParams.to || undefined,
+        date: searchParams.date || undefined,
+        coachType: filterParams.type,
+        maxFare: filterParams.maxFare,
+        sort: filterParams.sort,
+      });
+      setBuses(data.buses || []);
+    } catch (err) {
+      const message = err.response?.data?.message || 'Failed to load buses. Please try again.';
+      setError(message);
+      setBuses([]);
+    } finally {
+      setLoading(false);
+    }
+  }, []);
 
-    return [...filtered].sort((first, second) => {
-      if (filters.sort === 'price') return first.fare - second.fare;
-      if (filters.sort === 'departure') return first.departure.localeCompare(second.departure);
-      return second.rating - first.rating;
-    });
-  }, [filters, search]);
+  // Re-run whenever a filter changes (filters are always server-side now)
+  useEffect(() => {
+    runSearch(search, filters);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [filters.type, filters.sort, filters.maxFare]);
 
   const handleSearch = (event) => {
     event.preventDefault();
     setHasSearched(true);
+    runSearch(search, filters);
   };
 
   const handleReset = () => {
-    setFilters({ type: 'All', maxFare: 1500, sort: 'recommended' });
-    setSearch({ from: 'Dhaka', to: '', date: today });
+    const resetSearch = { from: 'Dhaka', to: '', date: today };
+    const resetFilters = { type: 'All', maxFare: 1500, sort: 'recommended' };
+    setSearch(resetSearch);
+    setFilters(resetFilters);
     setHasSearched(false);
+    runSearch(resetSearch, resetFilters);
   };
 
   const handleSelect = (bus) => {
@@ -64,7 +104,7 @@ const SearchBus = () => {
           <h1 className="page-title">Find your next bus</h1>
           <p className="page-subtitle">Compare schedules, fares, and available seats in one place.</p>
         </div>
-        <div className="search-page-stat"><strong>{results.length}</strong><span>services found</span></div>
+        <div className="search-page-stat"><strong>{loading ? '—' : buses.length}</strong><span>services found</span></div>
       </div>
 
       <Card variant="glass" className="search-page-panel">
@@ -73,7 +113,7 @@ const SearchBus = () => {
           <button type="button" className="swap-route-btn" onClick={() => setSearch((previous) => ({ ...previous, from: previous.to, to: previous.from }))} aria-label="Swap departure and destination">↔</button>
           <div className="search-page-field"><label htmlFor="searchTo">To</label><input id="searchTo" name="to" value={search.to} onChange={updateSearch} placeholder="Destination city" /></div>
           <div className="search-page-field"><label htmlFor="searchDate">Journey date</label><input id="searchDate" type="date" name="date" value={search.date} onChange={updateSearch} /></div>
-          <Button type="submit" leftIcon={<span aria-hidden="true">⌕</span>}>Search buses</Button>
+          <Button type="submit" leftIcon={<span aria-hidden="true">⌕</span>} loading={loading}>Search buses</Button>
         </form>
       </Card>
 
@@ -95,14 +135,31 @@ const SearchBus = () => {
         </aside>
 
         <section className="search-results-section">
-          <div className="results-toolbar"><div><h2>{hasSearched ? 'Available services' : 'Popular services'}</h2><p>{search.date ? `Showing schedules for ${search.date}` : 'Choose a date to see schedules'}</p></div><span className="results-count">{results.length} results</span></div>
-          {results.length > 0 ? results.map((bus) => (
-            <Card key={bus.id} variant="solid" className="bus-result-card">
-              <div className="bus-result-main"><div className="bus-operator-mark">{bus.operator.slice(0, 1)}</div><div><div className="bus-name-row"><h3>{bus.operator}</h3><span className="bus-badge">{bus.badge}</span></div><p className="bus-type">{bus.type} coach <span>•</span> <span className="rating">★ {bus.rating}</span></p></div></div>
-              <div className="bus-timing"><div><strong>{bus.departure}</strong><span>{bus.from}</span></div><div className="timing-line"><span>{bus.duration}</span><i /></div><div><strong>{bus.arrival}</strong><span>{bus.to}</span></div></div>
-              <div className="bus-result-action"><div><strong>৳{bus.fare}</strong><span>{bus.seats} seats left</span></div><Button size="sm" onClick={() => handleSelect(bus)}>Select bus</Button></div>
-            </Card>
-          )) : <div className="empty-results"><span className="empty-results-icon">⌕</span><h3>No matching buses</h3><p>Try another destination, coach type, or fare range.</p><Button variant="outline" onClick={handleReset}>Clear filters</Button></div>}
+          <div className="results-toolbar"><div><h2>{hasSearched ? 'Available services' : 'Popular services'}</h2><p>{search.date ? `Showing schedules for ${search.date}` : 'Choose a date to see schedules'}</p></div><span className="results-count">{loading ? '…' : `${buses.length} results`}</span></div>
+
+          {loading ? (
+            <div className="results-loading">
+              {[1, 2, 3].map((key) => (
+                <div key={key} className="bus-result-skeleton" />
+              ))}
+            </div>
+          ) : error ? (
+            <div className="empty-results empty-results-error">
+              <span className="empty-results-icon">!</span>
+              <h3>Couldn't load buses</h3>
+              <p>{error}</p>
+              <Button variant="outline" onClick={() => runSearch(search, filters)}>Try again</Button>
+            </div>
+          ) : buses.length > 0 ? buses.map((bus) => {
+            const badge = seatBadge(bus.availableSeats);
+            return (
+              <Card key={bus._id} variant="solid" className="bus-result-card">
+                <div className="bus-result-main"><div className="bus-operator-mark">{bus.operator.slice(0, 1)}</div><div><div className="bus-name-row"><h3>{bus.operator}</h3><span className={`bus-badge bus-badge-${badge.tone}`}>{badge.label}</span></div><p className="bus-type">{bus.coachType} coach <span>•</span> <span>{formatJourneyDate(bus.journeyDate)}</span></p></div></div>
+                <div className="bus-timing"><div><strong>{formatTime(bus.departureTime)}</strong><span>{bus.source}</span></div><div className="timing-line"><span>{bus.duration}</span><i /></div><div><strong>{formatTime(bus.arrivalTime)}</strong><span>{bus.destination}</span></div></div>
+                <div className="bus-result-action"><div><strong>৳{bus.fare}</strong><span>{bus.availableSeats} seats left</span></div><Button size="sm" onClick={() => handleSelect(bus)} disabled={bus.availableSeats === 0}>{bus.availableSeats === 0 ? 'Sold out' : 'Select bus'}</Button></div>
+              </Card>
+            );
+          }) : <div className="empty-results"><span className="empty-results-icon">⌕</span><h3>No matching buses</h3><p>Try another destination, coach type, or fare range.</p><Button variant="outline" onClick={handleReset}>Clear filters</Button></div>}
         </section>
       </div>
     </MainLayout>
