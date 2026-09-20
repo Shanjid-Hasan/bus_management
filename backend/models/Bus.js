@@ -88,6 +88,10 @@ const busSchema = new mongoose.Schema(
       enum: ['scheduled', 'cancelled', 'completed'],
       default: 'scheduled',
     },
+    bookedSeats: {
+      type: [Number],
+      default: [],
+    },
     createdBy: {
       type: mongoose.Schema.Types.ObjectId,
       ref: 'User',
